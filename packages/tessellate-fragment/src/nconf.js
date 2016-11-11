@@ -18,11 +18,13 @@ function readYamlFile(file: string): Object {
 }
 
 const configFile = path.resolve(process.cwd(), 'config.yaml')
+const routesFile = path.resolve(process.cwd(), 'routes.yaml')
 
 export default nconf.use('memory')
                     .argv()
                     .env()
                     .add('config', {type: 'literal', store: readYamlFile(configFile)})
+                    .add('config', {type: 'literal', store: {ROUTES: readYamlFile(routesFile)}})
                     .defaults({
                       APP_PORT: 3002,
                       MORGAN_FORMAT: 'dev',

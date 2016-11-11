@@ -1,0 +1,12 @@
+health:
+  path: /health
+  methods:
+    - GET
+metrics:
+  path: /metrics
+  methods:
+    - GET
+fragment:
+  path: /fragment
+  methods:
+    - GET

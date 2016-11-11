@@ -1,19 +1,17 @@
 // @flow
 
 import path from 'path'
-import { register } from '../dispatch'
+import logger from '../logger'
+import { Observer, Observable, Subject } from 'rx'
 import { Problem } from '../error'
 import * as bundleService from '../bundle-service'
 import renderToString from 'tessellate-render'
 
-type SkipperArgs = {|
-  language: string;
-  referer: string;
-  userAgent: string;
-  requestURI: string;
-  requestHost: string;
-  customer: string;
-|}
+import type { Context } from '../server'
+
+type FetchBundleResponse = Context & { bundle: Object; }
+
+const log = logger('actions:fragment')
 
 class FragmentProblem extends Problem {
   constructor(detail: string) {
@@ -21,36 +19,33 @@ class FragmentProblem extends Problem {
   }
 }
 
-export const FETCH_BUNDLE = Symbol('FETCH_BUNDLE')
+export async function onFetchBundle({ctx}: Context): Promise<FetchBundleResponse> {
+  log.info('onFetchBundle')
 
-export const fetchBundle = register(FETCH_BUNDLE, async ({headers, query}) => {
-  const skipperArgs = parseSkipperArgs(headers)
-  const bundleName = parseBundleName(skipperArgs)
+  const bundleName = parseBundleName(ctx.request.headers['x-zalando-request-uri'])
   const bundle = await bundleService.fetchBundle(bundleName)
-  return {bundle, props: skipperArgs}
-})
 
-export const RENDER_BUNDLE = Symbol('RENDER_BUNDLE')
-
-export const renderBundle = register(RENDER_BUNDLE, async ({bundle, props}) => {
-  const html = renderToString(bundle.source, props)
-  return {html}
-})
-
-function parseBundleName(skipper: SkipperArgs): string {
-  if (!skipper.requestURI) throw new FragmentProblem('Request URI not present.')
-  if (!skipper.requestHost) throw new FragmentProblem('Request Host not present.')
-
-  return path.join(skipper.requestHost.replace(/^www\./, ''), skipper.requestURI)
+  return {ctx, bundle}
 }
 
-function parseSkipperArgs(headers: Object): SkipperArgs {
-  return {
-    language: headers['accept-language'],
-    referer: headers['referer'],
-    userAgent: headers['user-agent'],
-    requestURI: headers['x-zalando-request-uri'],
-    requestHost: headers['x-zalando-request-host'],
-    customer: headers['x-zalando-customer']
-  }
+export async function onRenderBundle({ctx, bundle}: FetchBundleResponse) {
+  log.info('onRenderBundle')
+
+  ctx.set({
+    'Content-Type': 'text/html;charset=utf-8',
+    'Link': [
+      `<${bundle.links.css}>; rel="stylesheet"`,
+      `<${bundle.links.js}>; rel="fragment-script"`
+    ]
+  })
+  ctx.body = renderToString(bundle.source, ctx.request.headers)
+}
+
+function parseBundleName(requestURI: ?string): string {
+  if (!requestURI) throw new FragmentProblem('Request URI not present.')
+
+  const {hostname, pathname} = url.parse(requestURI)
+
+  if (hostname && pathname) return path.join(hostname.replace(/^www\./, ''), pathname)
+  else throw new FragmentProblem(`Illegal URI '${requestURI}'`)
 }

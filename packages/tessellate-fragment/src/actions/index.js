@@ -1,3 +1,4 @@
 // @flow
 
-import * as fragment from './fragment'
+export { default as health } from './health'
+export { default as metrics } from './metrics'
