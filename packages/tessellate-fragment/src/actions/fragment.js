@@ -2,12 +2,11 @@
 
 import path from 'path'
 import logger from '../logger'
-import { Observer, Observable, Subject } from 'rx'
 import { Problem } from '../error'
 import * as bundleService from '../bundle-service'
 import renderToString from 'tessellate-render'
 
-import type { Context } from '../server'
+import type { Context } from '../routes'
 
 type FetchBundleResponse = Context & { bundle: Object; }
 
@@ -19,17 +18,17 @@ class FragmentProblem extends Problem {
   }
 }
 
-export async function onFetchBundle({ctx}: Context): Promise<FetchBundleResponse> {
-  log.info('onFetchBundle')
+export async function onFetchBundle({ctx, next}: Context): Promise<FetchBundleResponse> {
+  log.debug('onFetchBundle')
 
   const bundleName = parseBundleName(ctx.request.headers['x-zalando-request-uri'])
   const bundle = await bundleService.fetchBundle(bundleName)
 
-  return {ctx, bundle}
+  return {ctx, next, bundle}
 }
 
 export async function onRenderBundle({ctx, bundle}: FetchBundleResponse) {
-  log.info('onRenderBundle')
+  log.debug('onRenderBundle')
 
   ctx.set({
     'Content-Type': 'text/html;charset=utf-8',

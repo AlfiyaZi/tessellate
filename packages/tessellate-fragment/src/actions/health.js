@@ -1,8 +1,6 @@
 // @flow
 
-import { Observer } from 'rx'
-
-import type { Context } from '../server'
+import type { Context } from '../routes'
 
 export default async function health({ctx}: Context) {
   ctx.body = 'OK'

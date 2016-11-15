@@ -6,14 +6,9 @@ import morgan from 'koa-morgan'
 import nconf from './nconf'
 import logger from './logger'
 import error from './error'
-import { Observable, Observer } from 'rx'
 import { router, routes } from './routes'
 import * as actions from './actions'
 import * as fragment from './actions/fragment'
-
-export type Context = {
-  ctx: Object;
-}
 
 const log = logger('server')
 

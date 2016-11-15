@@ -3,37 +3,54 @@
 import Router from 'koa-router'
 import logger from './logger'
 import nconf from './nconf'
-import { Observable, Subject } from 'rx'
+import { Observable, Subject } from 'rxjs'
 
 type RouteDefinitions = { [name: string]: {| path: string; methods: Array<string>; |}; }
-type RouteInitializerEntry = {| name: string; method: string; initializer: RouteInitializer; |}
-type RouteInitializerIndex = { [name: string]: { [method: string]: RouteInitializer; }; }
-type RouteInitializer = (init: (observable: Observable) => Observable) => Observable
+type RouteInitializerEntry<T> = {| name: string; method: string; initializer: RouteInitializer<T>; |}
+type RouteInitializerIndex<T> = { [name: string]: { [method: string]: RouteInitializer<T>; }; }
+type RouteInitializer<T> = (init?: (observable: Observable<T>) => Observable<*>) => Observable<T>
+export type Context = { ctx: Object; next: () => Promise<any>; }
 
 const log = logger('routes')
 
 const definitions: RouteDefinitions = nconf.get('ROUTES')
 
-function createRouteInitializer(router: Router, name: string, path: string, method: string): RouteInitializer {
+function toPromise(observable: Observable<*>): Promise<any> {
+  return new Promise((resolve, reject) => observable.subscribe(resolve, reject))
+}
 
-  return (init: (observable: Observable) => Observable) => {
+function safeInit<T>(init?: (arg: T) => T): (arg: T) => T {
+  return (arg: T) => {
+    if (!init) return arg
+    else return init(arg)
+  }
+}
+
+function createRouteInitializer(router: Router, name: string, path: string, method: string): RouteInitializer<Context> {
+
+  return (init?: (observable: Observable<Context>) => Observable<*>) => {
     log.debug('initialize %s %s:%s', name, method, path)
-    const subject = new Subject()
-    const observable = init(subject).publish()
+    const subject: Subject<Context> = new Subject()
+    const observable = safeInit(init)(subject).publish()
+    let connected = false
 
-    router.register(path, [method], async (ctx, next) => {
-      subject.onNext({ctx, next})
-      await observable.first().toPromise()
+    router.register(path, [method], (ctx, next) => {
+      const promise = toPromise(observable)
+      if (!connected) {
+        observable.connect()
+        connected = true
+      }
+      subject.next({ctx, next})
+      return promise
     }, {
       name
     })
 
-    observable.connect()
     return observable
   }
 }
 
-function *routeInitializerEntries(router: Router, definitions: RouteDefinitions): Iterable<RouteInitializerEntry> {
+function *routeInitializerEntries(router: Router, definitions: RouteDefinitions): Iterable<RouteInitializerEntry<Context>> {
   for (let name of Object.keys(definitions)) {
     const route = definitions[name]
     for (let method of route.methods) {
@@ -46,7 +63,7 @@ function *routeInitializerEntries(router: Router, definitions: RouteDefinitions)
   }
 }
 
-function initializeRoutes(router: Router, definitions: RouteDefinitions): RouteInitializerIndex {
+function initializeRoutes(router: Router, definitions: RouteDefinitions): RouteInitializerIndex<Context> {
   const observables = {}
   for (let route of routeInitializerEntries(router, definitions)) {
     observables[route.name] = {[route.method.toLowerCase()]: route.initializer}
